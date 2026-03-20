@@ -78,3 +78,73 @@ def update_todo(id:int, db:SessionDep, user:AuthDep):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="An error occurred while deleting an item",
         )
+        
+
+
+
+@todo_router.post('/category', status_code=status.HTTP_201_CREATED)
+def create_category(db: SessionDep, user: AuthDep, cat_data: CategoryCreate):
+    category = Category(text=cat_data.text, user_id=user.id)
+    try:
+        db.add(category)
+        db.commit()
+        db.refresh(category)
+        return category
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="An error occurred while creating the category",
+        )
+
+@todo_router.post('/todo/{todo_id}/category/{cat_id}')
+def add_category_to_todo(todo_id: int, cat_id: int, db: SessionDep, user: AuthDep):
+    todo = db.exec(select(Todo).where(Todo.id == todo_id, Todo.user_id == user.id)).one_or_none()
+    if not todo:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+    category = db.exec(select(Category).where(Category.id == cat_id, Category.user_id == user.id)).one_or_none()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found",
+        )
+    todo.categories.append(category)
+    db.add(todo)
+    db.commit()
+    return {"message": "Category added to todo"}
+
+@todo_router.delete('/todo/{todo_id}/category/{cat_id}')
+def remove_category_from_todo(todo_id: int, cat_id: int, db: SessionDep, user: AuthDep):
+    todo = db.exec(select(Todo).where(Todo.id == todo_id, Todo.user_id == user.id)).one_or_none()
+    if not todo:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+    category = db.exec(select(Category).where(Category.id == cat_id, Category.user_id == user.id)).one_or_none()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found",
+        )
+    if category not in todo.categories:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not assigned to this todo",
+        )
+    todo.categories.remove(category)
+    db.add(todo)
+    db.commit()
+    return {"message": "Category removed from todo"}
+
+@todo_router.get('/category/{cat_id}/todos', response_model=list[TodoResponse])
+def get_todos_for_category(cat_id: int, db: SessionDep, user: AuthDep):
+    category = db.exec(select(Category).where(Category.id == cat_id, Category.user_id == user.id)).one_or_none()
+    if not category:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+    return category.todos
